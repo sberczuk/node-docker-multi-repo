@@ -1,2 +1,1 @@
-# node-docker-multi-repo
-Toy project to write a tool to manage multi repo dependencies based from docker config
+Small project to solve a problem around managing a multi repo build and also to learn more about Node JS command Lines and async calls.
