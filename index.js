@@ -13,10 +13,12 @@ const program = require('commander');
 program
   .version(0.1)
   .option('-d, --dockerFile <dockerFile>', 'Docker Compose file to read')
+  .option('-s --statusOnly', 'only report on what branches are not on dev')
   .parse(process.argv);
 
 console.log(`Using Docker ${program.dockerFile}`);
 const dockerComposeFile = program.dockerFile;
+const doChange = !program.statusOnly;
 
 async function execFunc(cmd, dir, outputProcessor) {
   const { stdout, stderr } = await exec('git status', { cwd: dir });
@@ -33,20 +35,22 @@ async function gitStatus(dir, command) {
     //console.log(`The Callback ${match}`);
     return match[1]; // 0 is the whole string
   });
-  console.log(`THE BRANCH ${branch}`);
   if (branch != 'development') {
+    console.log(` ${dir} is ${branch} not development`);
     nonDevDirs.push(dir);
-    console.log(`Changing ${dir} ${branch} -> development`);
-    const { stdout2, stderr2 } = exec('git checkout development', dir);
+    if(doChange){
+      console.log(`Changing ${dir} ${branch} -> development`);
+      const { stdout2, stderr2 } = exec('git checkout development', dir);
+    }
   }
-  console.log(`updating ${dir}`);
-  await execFunc('git pull', dir);
-  console.log(`yarn install ${dir}`);
-  await execFunc('yarn install', dir);
-
+  if(doChange){
+   console.log(`updating ${dir}`);
+   await execFunc('git pull', dir);
+   console.log(`yarn install ${dir}`);
+   await execFunc('yarn install', dir);
+}
   //console.log('stdout:', stdout);
   //console.log('stderr:', stderr);
-  console.log(`dirs not on dev ${nonDevDirs}`);
 }
 
 // Get document, or throw exception on error
