@@ -27,7 +27,7 @@ const defaultBranch = program.branch;
 
 
 // check for required args.
-if(!defaultBranch && !dockerComposeFile){
+if(!(defaultBranch && dockerComposeFile){
   console.log("you must specify a branch and a docker compose file")
   program.outputHelp();
   return;
