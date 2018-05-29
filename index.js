@@ -59,7 +59,7 @@ async function gitStatus(dir, command) {
     nonDevDirs.push(dir);
     if(doChange && ! hasChanges){// only update when there are no modified files
       console.log(`Changing ${dir} ${branch} -> ${defaultBranch}`);
-      const { stdout2, stderr2 } = exec('git checkout development', dir);
+      const { stdout2, stderr2 } = exec(`git checkout ${defaultBranch}` , dir);
     }
   }
   if(doChange){
