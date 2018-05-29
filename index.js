@@ -96,8 +96,9 @@ try {
         if(!fs.existsSync(projectPath)){
           // get the folder
           console.log(`Project ${projDir} does not exist. Getting.`);
-          // TODO: Git Checkout
-          //execFunc()
+          if(!projDir.endsWith('migrations')) { // need a better way.
+            execSync(`git clone git@github.com:tetrascience/${projDir}.git`, {cwd:codeBaseDir});
+        }
         }
         // collect all that are not on development and can't be switched
         // only do node modules
