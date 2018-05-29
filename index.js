@@ -3,6 +3,7 @@
 const util = require('util');
 //const execSync = require('child_process').execSync;
 const exec = util.promisify(require('child_process').exec);
+const execSync =require('child_process').execSync;
 
 const yaml = require('js-yaml');
 const fs = require('fs');
@@ -59,16 +60,16 @@ async function gitStatus(dir, command) {
     nonDevDirs.push(dir);
     if(doChange && ! hasChanges){// only update when there are no modified files
       console.log(`Changing ${dir} ${branch} -> ${defaultBranch}`);
-      const { stdout2, stderr2 } = exec(`git checkout ${defaultBranch}` , dir);
+      execSync(`git checkout ${defaultBranch}` , dir);
     }
   }
   if(doChange){
    console.log(`updating ${dir}`);
-   await execFunc('git pull', dir);
+    execSync('git pull', dir);
    console.log(`yarn install ${dir}`);
    // add callback that does yarn reporting
 
-   await execFunc('yarn install', dir);
+    execSync('yarn install', dir);
 }
 
 }
