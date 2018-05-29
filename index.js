@@ -9,6 +9,8 @@ const fs = require('fs');
 const path = require('path');
 const program = require('commander');
 
+const gitUrlBase = '';
+
 program
   .version(0.1)
   .option('-d, --dockerFile <dockerFile>', 'Docker Compose file to read (Required)')
@@ -16,12 +18,15 @@ program
   .option('-s --statusOnly', 'only report on what branches are not on dev')
   .parse(process.argv);
 
-console.log(`Using Docker ${program.dockerFile}`);
+console.log(`Using Docker compose file: ${program.dockerFile}`);
 const dockerComposeFile = program.dockerFile;
 const doChange = !program.statusOnly;
 const defaultBranch = program.branch;
 
-if(!defaultBranch || ! dockerComposeFile){
+
+// check for required args.
+if(!defaultBranch && !dockerComposeFile){
+  console.log("you must specify a branch and a docker compose file")
   program.outputHelp();
   return;
 }
@@ -31,6 +36,8 @@ if(!defaultBranch || ! dockerComposeFile){
 const codeBaseDir = path.normalize(path.dirname(path.dirname(dockerComposeFile)));
 
 
+// Execute a function and extract information from  the output.
+//TO DO exit if there is a error.
 async function execFunc(cmd, dir, outputProcessor) {
   const { stdout, stderr } = await exec('git status', { cwd: dir });
   if (outputProcessor) {
@@ -40,13 +47,14 @@ async function execFunc(cmd, dir, outputProcessor) {
 
 async function gitStatus(dir, command) {
   let nonDevDirs = [];
-  const branch = await execFunc('git status', dir, (a, b) => {
+  const [branch, hasChanges] = await execFunc('git status', dir, (a, b) => {
     const match = a.match('On branch (.+)');
-    //console.log(`The Callback ${match}`);
-    return match[1]; // 0 is the whole string
+    const hasChanges = a.includes('modified');
+  //  console.log(`=The Callback|${match}|${match[1]}`);
+    return  [match[1], hasChanges]; // 0 is the whole string
   });
   if (branch != defaultBranch) {
-    console.log(` ${dir} is ${branch} not ${defaultBranch}`);
+    console.log(` ${dir} is ${branch} not ${defaultBranch} ${hasChanges?' and has changes':''}`);
     nonDevDirs.push(dir);
     if(doChange){
       console.log(`Changing ${dir} ${branch} -> ${defaultBranch}`);
@@ -57,10 +65,11 @@ async function gitStatus(dir, command) {
    console.log(`updating ${dir}`);
    await execFunc('git pull', dir);
    console.log(`yarn install ${dir}`);
+   // add callback that does yarn reporting
+
    await execFunc('yarn install', dir);
 }
-  //console.log('stdout:', stdout);
-  //console.log('stderr:', stderr);
+
 }
 
 // Get document, or throw exception on error
@@ -70,29 +79,28 @@ try {
   // get all volumes in keys
   console.log('docker deps include:');
   console.log(Object.keys(doc.services));
-  //console.log(Object.keys(doc.services['file']));
   for (var service in doc.services) {
-    console.log(service);
+    console.log(`Processing ${service}`);
     const s = doc.services[service];
     if (s.hasOwnProperty('volumes')) {
       const volumes = s['volumes'];
-      console.log(volumes.filter(v => v.startsWith('../ts-')));
+      //console.log(volumes.filter(v => v.startsWith('../ts-')));
       const projectDirs = volumes.filter(v => v.startsWith('../ts-'));
       projectDirs.forEach(f => {
         const projDir = f.split(':')[0].replace('../', '');
         const projectPath = `${codeBaseDir}/${projDir}`;
-        console.log(`>>>> ${projectPath}`);
-
+      //  console.log(`>>>> ${projectPath}`);
+        if(!fs.existsSync(projectPath)){
+          // get the folder
+          console.log(`Project ${projDir} does not exist. Getting.`);
+          //execFunc()
+        }
         // collect all that are not on development and can't be switched
         gitStatus(projectPath);
       });
     }
   }
-  //console.log();
 
-  // console.log(doc);
-
-  //console.log(doc);
 } catch (e) {
   console.log(e);
 }
