@@ -6,6 +6,7 @@ const exec = util.promisify(require('child_process').exec);
 
 const yaml = require('js-yaml');
 const fs = require('fs');
+
 const path = require('path');
 const program = require('commander');
 
@@ -85,6 +86,7 @@ try {
     if (s.hasOwnProperty('volumes')) {
       const volumes = s['volumes'];
       //console.log(volumes.filter(v => v.startsWith('../ts-')));
+      // this is a rough heuristic. We need a better one.
       const projectDirs = volumes.filter(v => v.startsWith('../ts-'));
       projectDirs.forEach(f => {
         const projDir = f.split(':')[0].replace('../', '');
@@ -93,10 +95,14 @@ try {
         if(!fs.existsSync(projectPath)){
           // get the folder
           console.log(`Project ${projDir} does not exist. Getting.`);
+          // TODO: Git Checkout
           //execFunc()
         }
         // collect all that are not on development and can't be switched
-        gitStatus(projectPath);
+        // only do node modules
+        if(fs.existsSync(path.join(projectPath,'package.json'))){
+          gitStatus(projectPath);
+      }
       });
     }
   }
