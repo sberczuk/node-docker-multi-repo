@@ -56,7 +56,7 @@ async function gitStatus(dir, command) {
   if (branch != defaultBranch) {
     console.log(` ${dir} is ${branch} not ${defaultBranch} ${hasChanges?' and has changes':''}`);
     nonDevDirs.push(dir);
-    if(doChange){
+    if(doChange && ! hasChanges){// only update when there are no modified files
       console.log(`Changing ${dir} ${branch} -> ${defaultBranch}`);
       const { stdout2, stderr2 } = exec('git checkout development', dir);
     }
