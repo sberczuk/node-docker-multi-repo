@@ -15,27 +15,31 @@ const gitUrlBase = '';
 
 program
   .version(0.1)
-  .option('-d, --dockerFile <dockerFile>', 'Docker Compose file to read (Required)')
+  .option('-d, --dockerFile <dockerFile>', 'Docker Compose file to read (Required. Full Path)')
   .option('-b, --branch <branch>', 'Branch to check(Required)')
-  .option('-s --statusOnly', 'only report on what branches are not on dev')
+  .option('-s, --statusOnly', 'only report on what branches are not on dev')
   .parse(process.argv);
 
-console.log(`Using Docker compose file: ${program.dockerFile}`);
-const dockerComposeFile = program.dockerFile;
+// Assume that the docker compose is in a peer folder of the rest of the code
+console.log (`${program.dockerFile}`);
+const defaultDockerFile = path.normalize(path.join(__dirname, '../../docker-compose.yml'));
+console.log(defaultDockerFile);
+const dockerComposeFile = program.dockerFile|| defaultDockerFile;
+
+
+// we can add an override later
+const codeBaseDir = path.normalize(path.dirname(path.dirname(dockerComposeFile)));
+
+console.log(`Using Docker compose file: ${dockerComposeFile}`);
 const doChange = !program.statusOnly;
 const defaultBranch = program.branch;
 
-
 // check for required args.
-if(!(defaultBranch && dockerComposeFile){
+if (!(defaultBranch && dockerComposeFile)) {
   console.log("you must specify a branch and a docker compose file")
   program.outputHelp();
   return;
 }
-
-// Assume that the docker compose is in a peer folder of the rest of the code
-// we can add an override later
-const codeBaseDir = path.normalize(path.dirname(path.dirname(dockerComposeFile)));
 
 
 // Execute a function and extract information from  the output.
@@ -93,12 +97,12 @@ try {
         const projDir = f.split(':')[0].replace('../', '');
         const projectPath = `${codeBaseDir}/${projDir}`;
       //  console.log(`>>>> ${projectPath}`);
-        if(!fs.existsSync(projectPath)){
+        if(!fs.existsSync(projectPath) && doChange){
           // get the folder
           console.log(`Project ${projDir} does not exist. Getting.`);
-          if(!projDir.endsWith('migrations')) { // need a better way.
+          if(!projDir.endsWith('migrations') ) { // need a better way.
             execSync(`git clone git@github.com:tetrascience/${projDir}.git`, {cwd:codeBaseDir});
-        }
+          }
         }
         // collect all that are not on development and can't be switched
         // only do node modules
