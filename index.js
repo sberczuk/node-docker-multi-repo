@@ -2,7 +2,8 @@
 
 
 //TODOs:
-//* output status of exec commands
+//* output status of exec commands (In Progress)
+//* better reporting of inconsistencies. Maybe a summary?
 //* Also update internal libs that we reference in sundry package.json files
 // * Make local module identification a function rather than inline.
 
@@ -81,7 +82,7 @@ async function gitStatus(dir, command) {
    // add callback that does yarn reporting
 
     const output = execSync('yarn install', dir);
-    console.log(`yarn install $dir} result :${output}`);
+    console.log(`yarn install ${dir} result :${output}`);
 }
 
 }
