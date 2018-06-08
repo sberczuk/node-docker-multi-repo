@@ -1,5 +1,11 @@
 'use strict';
 
+
+//TODOs:
+//* output status of exec commands
+//* Also update internal libs that we reference in sundry package.json files
+// * Make local module identification a function rather than inline.
+
 const util = require('util');
 //const execSync = require('child_process').execSync;
 const exec = util.promisify(require('child_process').exec);
@@ -56,7 +62,6 @@ async function gitStatus(dir, command) {
   const [branch, hasChanges] = await execFunc('git status', dir, (a, b) => {
     const match = a.match('On branch (.+)');
     const hasChanges = a.includes('modified');
-  //  console.log(`=The Callback|${match}|${match[1]}`);
     return  [match[1], hasChanges]; // 0 is the whole string
   });
   if (branch != defaultBranch) {
@@ -64,16 +69,19 @@ async function gitStatus(dir, command) {
     nonDevDirs.push(dir);
     if(doChange && ! hasChanges){// only update when there are no modified files
       console.log(`Changing ${dir} ${branch} -> ${defaultBranch}`);
-      execSync(`git checkout ${defaultBranch}` , dir);
+      const checkoutOutput = execSync(`git checkout ${defaultBranch}` , dir);
+      console.log(checkoutOutput.toString());
     }
   }
   if(doChange){
    console.log(`updating ${dir}`);
-    execSync('git pull', dir);
-   console.log(`yarn install ${dir}`);
+    const pullOutput = execSync('git pull', dir);
+    console.log(`Pull ${dir} result : ${pullOutput.toString()}`);
+    console.log(`yarn install ${dir}`);
    // add callback that does yarn reporting
 
-    execSync('yarn install', dir);
+    const output = execSync('yarn install', dir);
+    console.log(`yarn install $dir} result :${output}`);
 }
 
 }
@@ -101,7 +109,8 @@ try {
           // get the folder
           console.log(`Project ${projDir} does not exist. Getting.`);
           if(!projDir.endsWith('migrations') ) { // need a better way.
-            execSync(`git clone git@github.com:tetrascience/${projDir}.git`, {cwd:codeBaseDir});
+            const output = execSync(`git clone git@github.com:tetrascience/${projDir}.git`, {cwd:codeBaseDir});
+            console.log(output.toString());
           }
         }
         // collect all that are not on development and can't be switched
