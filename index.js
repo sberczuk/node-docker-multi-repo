@@ -2,7 +2,7 @@
 
 
 //TODOs:
-//* output status of exec commands (In Progress)
+
 //* better reporting of inconsistencies. Maybe a summary?
 //* Also update internal libs that we reference in sundry package.json files
 // * Make local module identification a function rather than inline.
@@ -57,7 +57,20 @@ async function execFunc(cmd, dir, outputProcessor) {
   }
 }
 
-function gitStatus(module, command) {
+
+function discoverLibModules(module){
+  //find each package.json, and collect a list of tsModulesToGet
+  let deps = [];
+  const pkgJsonPath = projectPackageFileSystemPath(module);
+  console.log(`parsing ${pkgJsonPath}`);
+  // look for deps and dev deps, filter for 'tetrascience/...'
+  const pkgData = JSON.parse(fs.readFileSync(pkgJsonPath));
+    Object.keys(pkgData.dependencies).forEach(k => {if(k.startsWith('ts-lib')){deps.push(k)}});
+
+    return deps;
+}
+
+function updateGitRepo(module) {
 
   let nonDevDirs = [];
   const dir = fullPathToProject(module);
@@ -92,7 +105,7 @@ function gitStatus(module, command) {
 }
 
 function projectPackageFileSystemPath(projectPath) {
-  const pathToPackageFile = path.join(projectPath, 'package.json');
+  const pathToPackageFile = path.join(fullPathToProject(projectPath), 'package.json');
   return pathToPackageFile;
 }
 
@@ -106,52 +119,61 @@ function cloneNewRepo(module) {
 }
 
 function getModules(dockerComposeFile) {
-  let projects = [];
+  let projects = new Set();
   var doc = yaml.safeLoad(fs.readFileSync(dockerComposeFile, 'utf8'));
   // get all keys
   // get all volumes in keys
-  console.log('docker deps include:');
-  console.log(Object.keys(doc.services));
+  //console.log('docker deps include:');
+  //console.log(Object.keys(doc.services));
   for (var service in doc.services) {
     console.log(`Processing ${service}`);
     const s = doc.services[service];
     if (s.hasOwnProperty('volumes')) {
       const volumes = s['volumes'];
-      //console.log(volumes.filter(v => v.startsWith('../ts-')));
       // this is a rough heuristic. We need a better one.
       const projectDirs = volumes.filter(v => v.startsWith('../ts-'));
       projectDirs.forEach(f => {
+
+        // ignore anything with a / past position 4
         const t = f.split(':')[0].replace('../', '');
         const end = t.lastIndexOf('/');
         const endSubstr = end > 0 ? end : t.length;
         const module = t.substring(0, endSubstr);
-
-        //console.log(`>>>> ${module}`);
         const projectPath = fullPathToProject(module);
 
-        // collect all that are not on development and can't be switched
-        // only do node modules
+        // only do node modules & ignore submodules of our projects
         const pathToPackageFile = projectPackageFileSystemPath(projectPath);
-        if (fs.existsSync(pathToPackageFile)) {
-          projects.push(module);
+        if ( end < 0) {
+          projects.add(module);
+        } else {
+          console.log(`Skipping ${t}`);
         }
       });
     }
   }
-  return projects;
+  return Array.from(projects);
 }
 
-// Get document, or throw exception on error
 try {
   const modules = getModules(dockerComposeFile);
-
+  console.log(` Modules are ${modules}`);
+  let libSet = new Set();
   modules.forEach(m => {
     const modulePath = fullPathToProject(m);
     if (!fs.existsSync(modulePath) && doChange) {
       console.log(`Project ${modulePath} does not exist. Getting.`);
-      cloneNewRepo(module);
+      cloneNewRepo(m);
     }
-    gitStatus(m);
+    const libs = discoverLibModules(m);
+    libs.forEach(l => {libSet.add(l);});
+    libSet.forEach(i => {
+      if (!fs.existsSync(modulePath) && doChange) {
+        console.log(`Project ${modulePath} does not exist. Getting.`);
+        cloneNewRepo(i);
+      }
+      updateGitRepo(i);
+    });
+    updateGitRepo(m);
   });
 
 
