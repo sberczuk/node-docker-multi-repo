@@ -10,7 +10,7 @@
 const util = require('util');
 //const execSync = require('child_process').execSync;
 const exec = util.promisify(require('child_process').exec);
-const execSync =require('child_process').execSync;
+const execSync = require('child_process').execSync;
 
 const yaml = require('js-yaml');
 const fs = require('fs');
@@ -28,10 +28,10 @@ program
   .parse(process.argv);
 
 // Assume that the docker compose is in a peer folder of the rest of the code
-console.log (`${program.dockerFile}`);
+console.log(`${program.dockerFile}`);
 const defaultDockerFile = path.normalize(path.join(__dirname, '../../docker-compose.yml'));
 console.log(defaultDockerFile);
-const dockerComposeFile = program.dockerFile|| defaultDockerFile;
+const dockerComposeFile = program.dockerFile || defaultDockerFile;
 
 
 // we can add an override later
@@ -48,43 +48,46 @@ if (!(defaultBranch && dockerComposeFile)) {
   return;
 }
 
-
 // Execute a function and extract information from  the output.
 //TO DO exit if there is a error.
 async function execFunc(cmd, dir, outputProcessor) {
-  const { stdout, stderr } = await exec('git status', { cwd: dir });
+  const {stdout, stderr} = await exec('git status', {cwd: dir});
   if (outputProcessor) {
     return outputProcessor(stdout, stderr);
   }
 }
 
-async function gitStatus(module, command) {
+function gitStatus(module, command) {
+
   let nonDevDirs = [];
   const dir = fullPathToProject(module);
-  const [branch, hasChanges] = await execFunc('git status', dir, (a, b) => {
-    const match = a.match('On branch (.+)');
-    const hasChanges = a.includes('modified');
-    return  [match[1], hasChanges]; // 0 is the whole string
-  });
+  console.log(`Processing ${module} in ${dir}`);
+  const statusOutput = execSync('git status', {cwd: dir});
+  console.log(statusOutput.toString());
+  const s = statusOutput.toString();
+  const match = s.match('On branch (.+)');
+  const hasChanges = s.includes('modified');
+  const branch = match[1];
+
   if (branch != defaultBranch) {
-    console.log(` ${dir} is ${branch} not ${defaultBranch} ${hasChanges?' and has changes':''}`);
+    console.log(` ${module} is ${branch} not ${defaultBranch} ${hasChanges ? ' and has changes' : ''}`);
     nonDevDirs.push(dir);
-    if(doChange && ! hasChanges){// only update when there are no modified files
+    if (doChange && !hasChanges) {// only update when there are no modified files
       console.log(`Changing ${dir} ${branch} -> ${defaultBranch}`);
-      const checkoutOutput = execSync(`git checkout ${defaultBranch}` , dir);
+      const checkoutOutput = execSync(`git checkout ${defaultBranch}`, {cwd: dir});
       console.log(checkoutOutput.toString());
     }
   }
-  if(doChange){
-   console.log(`updating ${dir}`);
-    const pullOutput = execSync('git pull', dir);
+  if (doChange && (branch === defaultBranch)) {
+    console.log(`updating ${module}`);
+    const pullOutput = execSync('git pull', {cwd: dir});
     console.log(`Pull ${dir} result : ${pullOutput.toString()}`);
     console.log(`yarn install ${dir}`);
-   // add callback that does yarn reporting
+    // add callback that does yarn reporting
 
     const output = execSync('yarn install', dir);
     console.log(`yarn install ${dir} result :${output}`);
-}
+  }
 
 }
 
@@ -94,7 +97,7 @@ function projectPackageFileSystemPath(projectPath) {
 }
 
 function fullPathToProject(project) {
-  return   path.join(codeBaseDir, project );
+  return path.join(codeBaseDir, project);
 }
 
 function cloneNewRepo(module) {
@@ -149,7 +152,7 @@ try {
       cloneNewRepo(module);
     }
     gitStatus(m);
-    });
+  });
 
 
 } catch (e) {
