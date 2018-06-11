@@ -58,8 +58,9 @@ async function execFunc(cmd, dir, outputProcessor) {
   }
 }
 
-async function gitStatus(dir, command) {
+async function gitStatus(module, command) {
   let nonDevDirs = [];
+  const dir = fullPathToProject(module);
   const [branch, hasChanges] = await execFunc('git status', dir, (a, b) => {
     const match = a.match('On branch (.+)');
     const hasChanges = a.includes('modified');
@@ -87,8 +88,22 @@ async function gitStatus(dir, command) {
 
 }
 
-// Get document, or throw exception on error
-try {
+function projectPackageFileSystemPath(projectPath) {
+  const pathToPackageFile = path.join(projectPath, 'package.json');
+  return pathToPackageFile;
+}
+
+function fullPathToProject(project) {
+  return   path.join(codeBaseDir, project );
+}
+
+function cloneNewRepo(module) {
+  const output = execSync(`git clone git@github.com:tetrascience/${module}.git`, {cwd: codeBaseDir});
+  console.log(output.toString());
+}
+
+function getModules(dockerComposeFile) {
+  let projects = [];
   var doc = yaml.safeLoad(fs.readFileSync(dockerComposeFile, 'utf8'));
   // get all keys
   // get all volumes in keys
@@ -103,25 +118,39 @@ try {
       // this is a rough heuristic. We need a better one.
       const projectDirs = volumes.filter(v => v.startsWith('../ts-'));
       projectDirs.forEach(f => {
-        const projDir = f.split(':')[0].replace('../', '');
-        const projectPath = `${codeBaseDir}/${projDir}`;
-      //  console.log(`>>>> ${projectPath}`);
-        if(!fs.existsSync(projectPath) && doChange){
-          // get the folder
-          console.log(`Project ${projDir} does not exist. Getting.`);
-          if(!projDir.endsWith('migrations') ) { // need a better way.
-            const output = execSync(`git clone git@github.com:tetrascience/${projDir}.git`, {cwd:codeBaseDir});
-            console.log(output.toString());
-          }
-        }
+        const t = f.split(':')[0].replace('../', '');
+        const end = t.lastIndexOf('/');
+        const endSubstr = end > 0 ? end : t.length;
+        const module = t.substring(0, endSubstr);
+
+        //console.log(`>>>> ${module}`);
+        const projectPath = fullPathToProject(module);
+
         // collect all that are not on development and can't be switched
         // only do node modules
-        if(fs.existsSync(path.join(projectPath,'package.json'))){
-          gitStatus(projectPath);
-      }
+        const pathToPackageFile = projectPackageFileSystemPath(projectPath);
+        if (fs.existsSync(pathToPackageFile)) {
+          projects.push(module);
+        }
       });
     }
   }
+  return projects;
+}
+
+// Get document, or throw exception on error
+try {
+  const modules = getModules(dockerComposeFile);
+
+  modules.forEach(m => {
+    const modulePath = fullPathToProject(m);
+    if (!fs.existsSync(modulePath) && doChange) {
+      console.log(`Project ${modulePath} does not exist. Getting.`);
+      cloneNewRepo(module);
+    }
+    gitStatus(m);
+    });
+
 
 } catch (e) {
   console.log(e);
