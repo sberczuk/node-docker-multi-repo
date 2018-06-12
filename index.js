@@ -70,7 +70,26 @@ function discoverLibModules(module){
     return deps;
 }
 
-function updateGitRepo(module) {
+function getPossibleBranch(module, desiredBranch){
+  const dir = fullPathToProject(module);
+  let supportedBranch = desiredBranch;
+  try {
+    const branchOutput = execSync(`git branch -r`, {cwd: dir});
+    console.log(branchOutput.toString());
+    if(branchOutput.includes(`origin/${desiredBranch}`)){
+      supportedBranch = desiredBranch;
+    } else {
+      console.log(`Branch ${desiredBranch} is not available for ${module}. Using master`);
+      supportedBranch = 'master';
+    }
+    // look for the desired branch in the origins, else return master
+  } catch (e){
+    console.error(e);
+  }
+  return supportedBranch;
+}
+
+function updateGitRepo(module, branchToSwitchTo = defaultBranch) {
 
   let nonDevDirs = [];
   const dir = fullPathToProject(module);
@@ -82,16 +101,21 @@ function updateGitRepo(module) {
   const hasChanges = s.includes('modified');
   const branch = match[1];
 
-  if (branch != defaultBranch) {
-    console.log(` ${module} is ${branch} not ${defaultBranch} ${hasChanges ? ' and has changes' : ''}`);
+  if (branch != branchToSwitchTo) {
+    console.log(` ${module} is ${branch} not ${branchToSwitchTo} ${hasChanges ? ' and has changes' : ''}`);
     nonDevDirs.push(dir);
     if (doChange && !hasChanges) {// only update when there are no modified files
-      console.log(`Changing ${dir} ${branch} -> ${defaultBranch}`);
-      const checkoutOutput = execSync(`git checkout ${defaultBranch}`, {cwd: dir});
-      console.log(checkoutOutput.toString());
+      try {
+        const theBranch = getPossibleBranch(module, branchToSwitchTo);
+        console.log(`Changing ${dir} ${branch} -> ${theBranch}`);
+        const checkoutOutput = execSync(`git checkout ${theBranch}`, {cwd: dir});
+        console.log(checkoutOutput.toString());
+      } catch (e){
+        console.error(e);
+      }
     }
   }
-  if (doChange && (branch === defaultBranch)) {
+  if (doChange && (branch === branchToSwitchTo)) {
     console.log(`updating ${module}`);
     const pullOutput = execSync('git pull', {cwd: dir});
     console.log(`Pull ${dir} result : ${pullOutput.toString()}`);
@@ -164,16 +188,18 @@ try {
       console.log(`Project ${modulePath} does not exist. Getting.`);
       cloneNewRepo(m);
     }
+    updateGitRepo(m, defaultBranch);
     const libs = discoverLibModules(m);
     libs.forEach(l => {libSet.add(l);});
-    libSet.forEach(i => {
-      if (!fs.existsSync(modulePath) && doChange) {
-        console.log(`Project ${modulePath} does not exist. Getting.`);
-        cloneNewRepo(i);
-      }
-      updateGitRepo(i);
-    });
-    updateGitRepo(m);
+
+  });
+  libSet.forEach(i => {
+    const modulePath = fullPathToProject(i);
+    if (!fs.existsSync(modulePath) && doChange) {
+      console.log(`Project ${modulePath} does not exist. Getting.`);
+      cloneNewRepo(i);
+    }
+    updateGitRepo(i, 'master'); // libs on master for now
   });
 
 
