@@ -1,6 +1,5 @@
 'use strict';
 
-
 //TODOs:
 
 //* better reporting of inconsistencies. Maybe a summary?
@@ -33,11 +32,11 @@ const defaultDockerFile = path.normalize(path.join(__dirname, '../../docker-comp
 console.log(defaultDockerFile);
 const dockerComposeFile = program.dockerFile || defaultDockerFile;
 
-
 // summary data
 let cloned = [];
 let switched = [];
 let updated = [];
+let notUpdated = [];
 
 // we can add an override later
 const codeBaseDir = path.normalize(path.dirname(path.dirname(dockerComposeFile)));
@@ -47,8 +46,8 @@ const doChange = !program.statusOnly;
 const defaultBranch = program.branch;
 
 // check for required args.
-if (!(defaultBranch && dockerComposeFile)) {
-  console.log("you must specify a branch and a docker compose file")
+if (!( defaultBranch && dockerComposeFile )) {
+  console.log('you must specify a branch and a docker compose file');
   program.outputHelp();
   return;
 }
@@ -62,43 +61,44 @@ async function execFunc(cmd, dir, outputProcessor) {
   }
 }
 
-
-function discoverLibModules(module){
+function discoverLibModules(module) {
   //find each package.json, and collect a list of tsModulesToGet
   let deps = [];
   const pkgJsonPath = projectPackageFileSystemPath(module);
   console.log(`parsing ${pkgJsonPath}`);
   // look for deps and dev deps, filter for 'tetrascience/...'
   const pkgData = JSON.parse(fs.readFileSync(pkgJsonPath));
-    //console.log(JSON.stringify(pkgData.dependencies));
-    Object.keys(pkgData.dependencies).forEach(k => {if(k.startsWith('ts-')){
+  //console.log(JSON.stringify(pkgData.dependencies));
+  Object.keys(pkgData.dependencies).forEach(k => {
+    if (k.startsWith('ts-')) {
       const depsRe = /tetrascience\/(.*)#/;
       const dependency = pkgData.dependencies[k];
       const match = dependency.match(depsRe);
-      if(match) {
+      if (match) {
         const internalModule = match[1];
         console.log(`${dependency}  ${internalModule}`);
         deps.push(internalModule);
       }
-    }});
-    console.log(deps);
-    return deps;
+    }
+  });
+  console.log(deps);
+  return deps;
 }
 
-function getPossibleBranch(module, desiredBranch){
+function getPossibleBranch(module, desiredBranch) {
   const dir = fullPathToProject(module);
   let supportedBranch = desiredBranch;
   try {
     const branchOutput = execSync(`git branch -r`, {cwd: dir});
     console.log(branchOutput.toString());
-    if(branchOutput.includes(`origin/${desiredBranch}`)){
+    if (branchOutput.includes(`origin/${desiredBranch}`)) {
       supportedBranch = desiredBranch;
     } else {
       console.log(`Branch ${desiredBranch} is not available for ${module}. Using master`);
       supportedBranch = 'master';
     }
     // look for the desired branch in the origins, else return master
-  } catch (e){
+  } catch (e) {
     console.error(e);
   }
   return supportedBranch;
@@ -116,6 +116,10 @@ function updateGitRepo(module, branchToSwitchTo = defaultBranch) {
   const hasChanges = s.includes('modified');
   const branch = match[1];
 
+  if (hasChanges) {
+    notUpdated.push(module);
+  }
+
   if (branch != branchToSwitchTo) {
     console.log(` ${module} is ${branch} not ${branchToSwitchTo} ${hasChanges ? ' and has changes' : ''}`);
     nonDevDirs.push(dir);
@@ -127,19 +131,21 @@ function updateGitRepo(module, branchToSwitchTo = defaultBranch) {
         switched.push(dir);
 
         console.log(checkoutOutput.toString());
-      } catch (e){
+      } catch (e) {
         console.error(e);
       }
     }
   }
-  if (doChange && (branch === branchToSwitchTo)) {
+  if (doChange && ( branch === branchToSwitchTo )) {
     console.log(`updating ${module}`);
     const pullOutput = execSync('git pull', {cwd: dir});
     console.log(`Pull ${dir} result :\n ${pullOutput.toString()}`);
-
+    const wasUpdated = !pullOutput.indexOf('Your branch is up to date') > -1;
     const output = execSync('yarn install', {cwd: dir});
     console.log(`yarn install ${dir} result :\n  ${output}`);
-    updated.push(dir);
+    if (!wasUpdated) {
+      updated.push(dir);
+    }
   }
 
 }
@@ -183,7 +189,7 @@ function getModules(dockerComposeFile) {
 
         // only do node modules & ignore submodules of our projects
         const pathToPackageFile = projectPackageFileSystemPath(projectPath);
-        if ( end < 0) {
+        if (end < 0) {
           projects.add(module);
         } else {
           console.log(`Skipping ${t}`);
@@ -219,12 +225,12 @@ try {
     updateGitRepo(i, 'master'); // libs on master for now
   });
   // summary
-  console.log('summary:');
+  console.log('\n\n\nSummary ----------------');
   updated.forEach(d => console.log(`updated ${d}`));
-
-
   cloned.forEach(d => console.log(`cloned ${d}`));
   switched.forEach(d => console.log(`switched ${d}`));
+  console.log('\nNOT Updated (because of existing changes)');
+  notUpdated.forEach(d => console.log(`NOT UPDATED ${d}`));
 
 } catch (e) {
   console.log(e);
