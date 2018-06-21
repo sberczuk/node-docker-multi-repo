@@ -34,6 +34,11 @@ console.log(defaultDockerFile);
 const dockerComposeFile = program.dockerFile || defaultDockerFile;
 
 
+// summary data
+let cloned = [];
+let switched = [];
+let updated = [];
+
 // we can add an override later
 const codeBaseDir = path.normalize(path.dirname(path.dirname(dockerComposeFile)));
 
@@ -65,8 +70,18 @@ function discoverLibModules(module){
   console.log(`parsing ${pkgJsonPath}`);
   // look for deps and dev deps, filter for 'tetrascience/...'
   const pkgData = JSON.parse(fs.readFileSync(pkgJsonPath));
-    Object.keys(pkgData.dependencies).forEach(k => {if(k.startsWith('ts-lib')){deps.push(k)}});
-
+    //console.log(JSON.stringify(pkgData.dependencies));
+    Object.keys(pkgData.dependencies).forEach(k => {if(k.startsWith('ts-')){
+      const depsRe = /tetrascience\/(.*)#/;
+      const dependency = pkgData.dependencies[k];
+      const match = dependency.match(depsRe);
+      if(match) {
+        const internalModule = match[1];
+        console.log(`${dependency}  ${internalModule}`);
+        deps.push(internalModule);
+      }
+    }});
+    console.log(deps);
     return deps;
 }
 
@@ -109,6 +124,8 @@ function updateGitRepo(module, branchToSwitchTo = defaultBranch) {
         const theBranch = getPossibleBranch(module, branchToSwitchTo);
         console.log(`Changing ${dir} ${branch} -> ${theBranch}`);
         const checkoutOutput = execSync(`git checkout ${theBranch}`, {cwd: dir});
+        switched.push(dir);
+
         console.log(checkoutOutput.toString());
       } catch (e){
         console.error(e);
@@ -118,12 +135,11 @@ function updateGitRepo(module, branchToSwitchTo = defaultBranch) {
   if (doChange && (branch === branchToSwitchTo)) {
     console.log(`updating ${module}`);
     const pullOutput = execSync('git pull', {cwd: dir});
-    console.log(`Pull ${dir} result : ${pullOutput.toString()}`);
-    console.log(`yarn install ${dir}`);
-    // add callback that does yarn reporting
+    console.log(`Pull ${dir} result :\n ${pullOutput.toString()}`);
 
-    const output = execSync('yarn install', dir);
-    console.log(`yarn install ${dir} result :${output}`);
+    const output = execSync('yarn install', {cwd: dir});
+    console.log(`yarn install ${dir} result :\n  ${output}`);
+    updated.push(dir);
   }
 
 }
@@ -187,6 +203,7 @@ try {
     if (!fs.existsSync(modulePath) && doChange) {
       console.log(`Project ${modulePath} does not exist. Getting.`);
       cloneNewRepo(m);
+      cloned.push(m);
     }
     updateGitRepo(m, defaultBranch);
     const libs = discoverLibModules(m);
@@ -201,7 +218,13 @@ try {
     }
     updateGitRepo(i, 'master'); // libs on master for now
   });
+  // summary
+  console.log('summary:');
+  updated.forEach(d => console.log(`updated ${d}`));
 
+
+  cloned.forEach(d => console.log(`cloned ${d}`));
+  switched.forEach(d => console.log(`switched ${d}`));
 
 } catch (e) {
   console.log(e);
