@@ -31,8 +31,6 @@ const defaultDockerFile = path.normalize(path.join(__dirname, '../../docker-comp
 console.log(defaultDockerFile);
 const dockerComposeFile = program.dockerFile || defaultDockerFile;
 
-
-
 // summary data
 const cloned = [];
 const switched = [];
@@ -94,7 +92,7 @@ async function getPossibleBranch(module, desiredBranch) {
     //const branchOutput = execSync(`git branch -r`, {cwd: dir});
     const {stderr, stdout} = await exec(`git branch -r`, {cwd: dir});
     const branchOutput = stdout;
-   // console.log(branchOutput.toString());
+    // console.log(branchOutput.toString());
     if (branchOutput.includes(`origin/${desiredBranch}`)) {
       supportedBranch = desiredBranch;
     } else {
@@ -132,12 +130,12 @@ async function switchBranch(module, branchToSwitchTo, dir, currentBranch) {
   // const checkoutOutput = execSync(`git checkout ${theBranch}`, {cwd: dir});
   try {
     const {stdout: checkoutOutput, stderr} = await exec(`git checkout ${branchToSwitchTo}`, {cwd: dir});
-   //
+    //
     // switched.push(dir);
 
     console.log(checkoutOutput.toString());
     return true;
-  } catch (e){
+  } catch (e) {
     return false;
   }
 }
@@ -166,10 +164,8 @@ async function updateGitRepo(module, branchToSwitchTo = defaultBranch) {
       try {
         const theBranch = await getPossibleBranch(module, branchToSwitchTo);
 
-        if(await switchBranch(module, theBranch, dir, currentBranch)){
-          switched.push(dir);
-          console.log(`switched!!! ${switched.length}`);
-          switched.forEach(d => process.stdout.write(`switched ${d}\n`));
+        if (await switchBranch(module, theBranch, dir, currentBranch)) {
+          switched.push(module);
         }
       } catch (e) {
         console.error(e);
@@ -180,10 +176,9 @@ async function updateGitRepo(module, branchToSwitchTo = defaultBranch) {
     console.log(`updating ${module}`);
     //const pullOutput = execSync('git pull', {cwd: dir});
     try {
-      if(await gitPull(dir)){
-        updated.push(dir);
+      if (await gitPull(dir)) {
+        updated.push(module);
       }
-      console.log(`UPDATED!!! ${updated.length}`);
       await yarnInstall(dir);
     } catch (e) {
       console.log(`error doing update ${e}`);
@@ -203,11 +198,11 @@ function fullPathToProject(project) {
 
 async function cloneNewRepo(module) {
   //const output = execSync(`git clone git@github.com:tetrascience/${module}.git`, {cwd: codeBaseDir});
-  try{
+  try {
     const {stdout: output, stderr} = await exec(`git clone git@github.com:tetrascience/${module}.git`, {cwd: codeBaseDir});
     console.log(output.toString());
     return module;
-  } catch (e){
+  } catch (e) {
     return null;
   }
 }
@@ -248,45 +243,51 @@ function getModules(dockerComposeFile) {
   return Array.from(projects);
 }
 
-
 //main
- async function runProgram() {
+async function runProgram() {
   try {
     const modules = getModules(dockerComposeFile);
     console.log(` Modules are ${modules}`);
     let libSet = new Set();
-    modules.forEach(m => {
+    for (let i = 0; i < modules.length; i++) {
+      const m = modules[i];
       const modulePath = fullPathToProject(m);
       if (!fs.existsSync(modulePath) && doChange) {
         console.log(`Project ${modulePath} does not exist. Getting.`);
-        cloneNewRepo(m);
-          cloned.push(m);
-          console.log(`CLONED! ${cloned.length}`);
-        }
+        await cloneNewRepo(m);
+        cloned.push(m);
+        console.log(`CLONED! ${cloned.length}`);
+      }
 
-      updateGitRepo(m, defaultBranch);
+      await updateGitRepo(m, defaultBranch);
       const libs = discoverLibModules(m);
       libs.forEach(l => {libSet.add(l);});
 
-    });
+    }
 
     console.log('updating libraries');
-    libSet.forEach(i => {
+      for(let ii = 0; ii < libSet.length; ii++){
+        const i = libSet[ii];
+
       const modulePath = fullPathToProject(i);
       if (!fs.existsSync(modulePath) && doChange) {
         console.log(`Project ${modulePath} does not exist. Getting.`);
-        cloneNewRepo(i);
+        await cloneNewRepo(i);
       }
-      updateGitRepo(i, 'master'); // libs on master for now
-    });
+      await updateGitRepo(i, 'master'); // libs on master for now
+    }
     // summary -- doesn't work with async/await Fix is TBD
-    // console.log('\n\n\nSummary ----------------');
-    // updated.forEach(d => console.log(`updated ${d}`));
-    // cloned.forEach(d => console.log(`cloned ${d}`));
-    // switched.forEach(d => process.stdout.write(`switched ${d}`));
-    // // switched.forEach(d => console.log(`switched ${d}`));
-    // console.log('\nNOT Updated (because of existing changes)');
-    // notUpdated.forEach(d => console.log(`NOT UPDATED ${d}`));
+    console.log('\n\n\nSummary ----------------');
+    console.log('\nSwitched Branches:');
+    switched.forEach(d => console.log(`switched ${d}`));
+    console.log('\nUpdated Repository:');
+    updated.forEach(d => console.log(`updated ${d}`));
+    console.log('\nCloned Repository:');
+    cloned.forEach(d => console.log(`cloned ${d}`));
+    // switched.forEach(d => console.log(`switched ${d}`));
+
+    console.log('\nNOT Updated (because of existing changes)');
+    notUpdated.forEach(d => console.log(`NOT UPDATED ${d}`));
 
   } catch (e) {
     console.log('>>> Tool exited with an error');
