@@ -7,9 +7,8 @@
 // * Make local module identification a function rather than inline.
 
 const util = require('util');
-//const execSync = require('child_process').execSync;
 const exec = util.promisify(require('child_process').exec);
-const execSync = require('child_process').execSync;
+//const execSync = require('child_process').execSync;
 
 const yaml = require('js-yaml');
 const fs = require('fs');
@@ -32,11 +31,13 @@ const defaultDockerFile = path.normalize(path.join(__dirname, '../../docker-comp
 console.log(defaultDockerFile);
 const dockerComposeFile = program.dockerFile || defaultDockerFile;
 
+
+
 // summary data
-let cloned = [];
-let switched = [];
-let updated = [];
-let notUpdated = [];
+const cloned = [];
+const switched = [];
+const updated = [];
+const notUpdated = [];
 
 // we can add an override later
 const codeBaseDir = path.normalize(path.dirname(path.dirname(dockerComposeFile)));
@@ -52,6 +53,7 @@ if (!( defaultBranch && dockerComposeFile )) {
   return;
 }
 
+runProgram();
 // Execute a function and extract information from  the output.
 //TO DO exit if there is a error.
 async function execFunc(cmd, dir, outputProcessor) {
@@ -76,7 +78,7 @@ function discoverLibModules(module) {
       const match = dependency.match(depsRe);
       if (match) {
         const internalModule = match[1];
-        console.log(`${dependency}  ${internalModule}`);
+        //console.log(`${dependency}  ${internalModule}`);
         deps.push(internalModule);
       }
     }
@@ -85,12 +87,14 @@ function discoverLibModules(module) {
   return deps;
 }
 
-function getPossibleBranch(module, desiredBranch) {
+async function getPossibleBranch(module, desiredBranch) {
   const dir = fullPathToProject(module);
   let supportedBranch = desiredBranch;
   try {
-    const branchOutput = execSync(`git branch -r`, {cwd: dir});
-    console.log(branchOutput.toString());
+    //const branchOutput = execSync(`git branch -r`, {cwd: dir});
+    const {stderr, stdout} = await exec(`git branch -r`, {cwd: dir});
+    const branchOutput = stdout;
+   // console.log(branchOutput.toString());
     if (branchOutput.includes(`origin/${desiredBranch}`)) {
       supportedBranch = desiredBranch;
     } else {
@@ -104,50 +108,88 @@ function getPossibleBranch(module, desiredBranch) {
   return supportedBranch;
 }
 
-function updateGitRepo(module, branchToSwitchTo = defaultBranch) {
+async function yarnInstall(dir) {
+//const output = execSync('yarn install', {cwd: dir});
+  const {stdout: output, stderr: err2} = await exec('yarn install', {cwd: dir});
+  console.log(`yarn install ${dir} result :\n  ${output}`);
+  return true;
+}
+
+async function gitPull(dir) {
+  const {stdout: pullOutput, stderr} = await exec('git pull', {cwd: dir});
+  console.log(`Pull ${dir} result :\n ${pullOutput.toString()}`);
+  const wasUpdated = !pullOutput.indexOf('Your branch is up to date') > -1;
+  if (!wasUpdated) {
+    updated.push(dir);
+    return true;
+  }
+  return false;
+}
+
+async function switchBranch(module, branchToSwitchTo, dir, currentBranch) {
+
+  console.log(`Changing ${dir} ${currentBranch} -> ${branchToSwitchTo}`);
+  // const checkoutOutput = execSync(`git checkout ${theBranch}`, {cwd: dir});
+  try {
+    const {stdout: checkoutOutput, stderr} = await exec(`git checkout ${branchToSwitchTo}`, {cwd: dir});
+   //
+    // switched.push(dir);
+
+    console.log(checkoutOutput.toString());
+    return true;
+  } catch (e){
+    return false;
+  }
+}
+
+async function updateGitRepo(module, branchToSwitchTo = defaultBranch) {
 
   let nonDevDirs = [];
   const dir = fullPathToProject(module);
   console.log(`Processing ${module} in ${dir}`);
-  const statusOutput = execSync('git status', {cwd: dir});
+  //const statusOutput = execSync('git status', {cwd: dir});
+  const {stdout: statusOutput, stderr} = await exec('git status', {cwd: dir});
   console.log(statusOutput.toString());
   const s = statusOutput.toString();
   const match = s.match('On branch (.+)');
   const hasChanges = s.includes('modified');
-  const branch = match[1];
+  const currentBranch = match[1];
 
   if (hasChanges) {
     notUpdated.push(module);
   }
 
-  if (branch != branchToSwitchTo) {
-    console.log(` ${module} is ${branch} not ${branchToSwitchTo} ${hasChanges ? ' and has changes' : ''}`);
+  if (currentBranch != branchToSwitchTo) {
+    console.log(` ${module} is ${currentBranch} not ${branchToSwitchTo} ${hasChanges ? ' and has changes' : ''}`);
     nonDevDirs.push(dir);
     if (doChange && !hasChanges) {// only update when there are no modified files
       try {
-        const theBranch = getPossibleBranch(module, branchToSwitchTo);
-        console.log(`Changing ${dir} ${branch} -> ${theBranch}`);
-        const checkoutOutput = execSync(`git checkout ${theBranch}`, {cwd: dir});
-        switched.push(dir);
+        const theBranch = await getPossibleBranch(module, branchToSwitchTo);
 
-        console.log(checkoutOutput.toString());
+        if(await switchBranch(module, theBranch, dir, currentBranch)){
+          switched.push(dir);
+          console.log(`switched!!! ${switched.length}`);
+          switched.forEach(d => process.stdout.write(`switched ${d}\n`));
+        }
       } catch (e) {
         console.error(e);
       }
     }
   }
-  if (doChange && ( branch === branchToSwitchTo )) {
+  if (doChange && ( currentBranch === branchToSwitchTo )) {
     console.log(`updating ${module}`);
-    const pullOutput = execSync('git pull', {cwd: dir});
-    console.log(`Pull ${dir} result :\n ${pullOutput.toString()}`);
-    const wasUpdated = !pullOutput.indexOf('Your branch is up to date') > -1;
-    const output = execSync('yarn install', {cwd: dir});
-    console.log(`yarn install ${dir} result :\n  ${output}`);
-    if (!wasUpdated) {
-      updated.push(dir);
+    //const pullOutput = execSync('git pull', {cwd: dir});
+    try {
+      if(await gitPull(dir)){
+        updated.push(dir);
+      }
+      console.log(`UPDATED!!! ${updated.length}`);
+      await yarnInstall(dir);
+    } catch (e) {
+      console.log(`error doing update ${e}`);
     }
   }
-
+  return true;
 }
 
 function projectPackageFileSystemPath(projectPath) {
@@ -159,9 +201,15 @@ function fullPathToProject(project) {
   return path.join(codeBaseDir, project);
 }
 
-function cloneNewRepo(module) {
-  const output = execSync(`git clone git@github.com:tetrascience/${module}.git`, {cwd: codeBaseDir});
-  console.log(output.toString());
+async function cloneNewRepo(module) {
+  //const output = execSync(`git clone git@github.com:tetrascience/${module}.git`, {cwd: codeBaseDir});
+  try{
+    const {stdout: output, stderr} = await exec(`git clone git@github.com:tetrascience/${module}.git`, {cwd: codeBaseDir});
+    console.log(output.toString());
+    return module;
+  } catch (e){
+    return null;
+  }
 }
 
 function getModules(dockerComposeFile) {
@@ -200,38 +248,48 @@ function getModules(dockerComposeFile) {
   return Array.from(projects);
 }
 
-try {
-  const modules = getModules(dockerComposeFile);
-  console.log(` Modules are ${modules}`);
-  let libSet = new Set();
-  modules.forEach(m => {
-    const modulePath = fullPathToProject(m);
-    if (!fs.existsSync(modulePath) && doChange) {
-      console.log(`Project ${modulePath} does not exist. Getting.`);
-      cloneNewRepo(m);
-      cloned.push(m);
-    }
-    updateGitRepo(m, defaultBranch);
-    const libs = discoverLibModules(m);
-    libs.forEach(l => {libSet.add(l);});
 
-  });
-  libSet.forEach(i => {
-    const modulePath = fullPathToProject(i);
-    if (!fs.existsSync(modulePath) && doChange) {
-      console.log(`Project ${modulePath} does not exist. Getting.`);
-      cloneNewRepo(i);
-    }
-    updateGitRepo(i, 'master'); // libs on master for now
-  });
-  // summary
-  console.log('\n\n\nSummary ----------------');
-  updated.forEach(d => console.log(`updated ${d}`));
-  cloned.forEach(d => console.log(`cloned ${d}`));
-  switched.forEach(d => console.log(`switched ${d}`));
-  console.log('\nNOT Updated (because of existing changes)');
-  notUpdated.forEach(d => console.log(`NOT UPDATED ${d}`));
+//main
+ async function runProgram() {
+  try {
+    const modules = getModules(dockerComposeFile);
+    console.log(` Modules are ${modules}`);
+    let libSet = new Set();
+    modules.forEach(m => {
+      const modulePath = fullPathToProject(m);
+      if (!fs.existsSync(modulePath) && doChange) {
+        console.log(`Project ${modulePath} does not exist. Getting.`);
+        cloneNewRepo(m);
+          cloned.push(m);
+          console.log(`CLONED! ${cloned.length}`);
+        }
 
-} catch (e) {
-  console.log(e);
+      updateGitRepo(m, defaultBranch);
+      const libs = discoverLibModules(m);
+      libs.forEach(l => {libSet.add(l);});
+
+    });
+
+    console.log('updating libraries');
+    libSet.forEach(i => {
+      const modulePath = fullPathToProject(i);
+      if (!fs.existsSync(modulePath) && doChange) {
+        console.log(`Project ${modulePath} does not exist. Getting.`);
+        cloneNewRepo(i);
+      }
+      updateGitRepo(i, 'master'); // libs on master for now
+    });
+    // summary -- doesn't work with async/await Fix is TBD
+    // console.log('\n\n\nSummary ----------------');
+    // updated.forEach(d => console.log(`updated ${d}`));
+    // cloned.forEach(d => console.log(`cloned ${d}`));
+    // switched.forEach(d => process.stdout.write(`switched ${d}`));
+    // // switched.forEach(d => console.log(`switched ${d}`));
+    // console.log('\nNOT Updated (because of existing changes)');
+    // notUpdated.forEach(d => console.log(`NOT UPDATED ${d}`));
+
+  } catch (e) {
+    console.log('>>> Tool exited with an error');
+    console.log(e);
+  }
 }
