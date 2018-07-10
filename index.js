@@ -22,6 +22,7 @@ program
   .version(0.1)
   .option('-d, --dockerFile <dockerFile>', 'Docker Compose file to read (Required. Full Path)')
   .option('-b, --branch <branch>', 'Branch to check(Required)')
+  .option('-f, --force', 'Force git pull and yarn update')
   .option('-s, --statusOnly', 'only report on what branches are not on dev')
   .parse(process.argv);
 
@@ -43,6 +44,7 @@ const codeBaseDir = path.normalize(path.dirname(path.dirname(dockerComposeFile))
 console.log(`Using Docker compose file: ${dockerComposeFile}`);
 const doChange = !program.statusOnly;
 const defaultBranch = program.branch;
+const forceUpdate = program.force;
 
 // check for required args.
 if (!( defaultBranch && dockerComposeFile )) {
@@ -107,7 +109,6 @@ async function getPossibleBranch(module, desiredBranch) {
 }
 
 async function yarnInstall(dir) {
-//const output = execSync('yarn install', {cwd: dir});
   const {stdout: output, stderr: err2} = await exec('yarn install', {cwd: dir});
   console.log(`yarn install ${dir} result :\n  ${output}`);
   return true;
@@ -157,14 +158,15 @@ async function updateGitRepo(module, branchToSwitchTo = defaultBranch) {
     notUpdated.push(module);
   }
 
+  let actualBranch;
   if (currentBranch != branchToSwitchTo) {
     console.log(` ${module} is ${currentBranch} not ${branchToSwitchTo} ${hasChanges ? ' and has changes' : ''}`);
     nonDevDirs.push(dir);
     if (doChange && !hasChanges) {// only update when there are no modified files
       try {
-        const theBranch = await getPossibleBranch(module, branchToSwitchTo);
+        const actualBranch = await getPossibleBranch(module, branchToSwitchTo);
 
-        if (await switchBranch(module, theBranch, dir, currentBranch)) {
+        if (await switchBranch(module, actualBranch, dir, currentBranch)) {
           switched.push(module);
         }
       } catch (e) {
@@ -172,7 +174,8 @@ async function updateGitRepo(module, branchToSwitchTo = defaultBranch) {
       }
     }
   }
-  if (doChange && ( currentBranch === branchToSwitchTo )) {
+  const doUpdates = ( currentBranch === actualBranch ) || forceUpdate;
+  if (doChange && doUpdates) {
     console.log(`updating ${module}`);
     //const pullOutput = execSync('git pull', {cwd: dir});
     try {
